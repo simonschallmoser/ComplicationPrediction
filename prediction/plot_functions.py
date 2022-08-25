@@ -9,8 +9,8 @@ from shap import plots
 from sklearn.metrics import roc_auc_score, precision_recall_curve, auc, roc_curve, balanced_accuracy_score
 
 # load the font properties
-font = matplotlib.font_manager.FontProperties(fname="/local/home/sschallmoser/.env_complications/lib/python3.6/site-packages/matplotlib/mpl-data/fonts/ttf/Arial.ttf")
-font1 = matplotlib.font_manager.FontProperties(fname="/local/home/sschallmoser/.env_complications/lib/python3.6/site-packages/matplotlib/mpl-data/fonts/ttf/Arial.ttf", size=16)
+font = matplotlib.font_manager.FontProperties(fname="Arial.ttf")
+font1 = matplotlib.font_manager.FontProperties(fname="Arial.ttf", size=16)
 
 def get_results(population,
                 outcome, 
