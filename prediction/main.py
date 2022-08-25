@@ -9,7 +9,6 @@ outcomes = ['eyes', 'nerves', 'renal', 'pvd', 'cevd', 'cavd']
 random_seeds = [23, 8902, 2982, 5793, 1039, 3947, 1380, 5893, 3981, 8502]
 path = '/local/home/sschallmoser/complications/data/'
 
-start = time.time()
 for population in ['diabetes', 'prediabetes']:
     for model in ['logreg', 'catboost']:        
         if population == 'diabetes':
