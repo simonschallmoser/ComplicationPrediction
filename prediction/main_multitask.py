@@ -54,17 +54,17 @@ for population in ['diabetes', 'prediabetes']:
             else:
                 data_ = data_all.copy()
             Parallel(n_jobs=len(random_seeds))(delayed(prediction.prediction)(data_final=data_,
-                                                                                       random_seed=seed,
-                                                                                       model=model,
-                                                                                       population=population,
-                                                                                       outcome=outcome,
-                                                                                       type_=type_,
-                                                                                       file_ending1=file_ending1,
-                                                                                       predictors=None, 
-                                                                                       scale=False,
-                                                                                       n_iter=20,
-                                                                                       n_outer_splits=5,
-                                                                                       n_inner_splits=4, 
-                                                                                       multitask=multitask,
-                                                                                       imputation_method=None)
+                                                                              random_seed=seed,
+                                                                              model=model,
+                                                                              population=population,
+                                                                              outcome=outcome,
+                                                                              type_=type_,
+                                                                              file_ending1=file_ending1,
+                                                                              predictors=None, 
+                                                                              scale=False,
+                                                                              n_iter=20,
+                                                                              n_outer_splits=5,
+                                                                              n_inner_splits=4, 
+                                                                              multitask=multitask,
+                                                                              imputation_method=None)
                 for seed in random_seeds)
