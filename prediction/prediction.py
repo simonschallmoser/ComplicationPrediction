@@ -26,88 +26,6 @@ import preprocess
 import data_imputation
 import shap
 
-def compute_metrics(y_test,
-                    y_pred,
-                    model,
-                    pipe):
-    auroc = metrics.roc_auc_score(y_test, y_pred)
-    precision, recall, thresholds = metrics.precision_recall_curve(y_test, y_pred)
-    auprc = metrics.auc(recall, precision)
-    fpr, tpr, thr = metrics.roc_curve(y_test, y_pred)
-    tpr_opt = tpr[np.argmax(tpr-fpr)]
-    tnr_opt = 1 - fpr[np.argmax(tpr-fpr)]
-    thr_opt = thr[np.argmax(tpr-fpr)]
-    y_pred_rounded = [1 if i > thr_opt else 0 for i in y_pred]
-    pr = np.round(np.count_nonzero(y_pred_rounded)/len(y_pred_rounded)*100, 1)
-    prec_opt = metrics.precision_score(y_test, y_pred_rounded)
-    bacc_opt = metrics.balanced_accuracy_score(y_test, y_pred_rounded)
-    if model == 'logreg':
-        coefs = pipe['model'].coef_[0]
-    else:
-        coefs = None
-    
-    return auroc, auprc, tpr_opt, tnr_opt, prec_opt, bacc_opt, pr, coefs
-
-def unpack_metrics(all_metrics: list,
-                   outcome,
-                   population,
-                   model,
-                   n_bootstrapping_iterations,
-                   file_ending2):
-    if n_bootstrapping_iterations != 0:
-        method = 'bootstrap'
-        lower = 2.5
-        upper = 97.5
-    else:
-        method = 'range'
-        lower = 0
-        upper = 100
-    aurocs_all = [all_metrics[i][0] for i in range(len(all_metrics))]
-    aurocs = (np.mean(aurocs_all), np.percentile(aurocs_all, lower), np.percentile(aurocs_all, upper))    
-    auprcs = [all_metrics[i][1] for i in range(len(all_metrics))]
-    auprcs = (np.mean(auprcs), np.percentile(auprcs, lower), np.percentile(auprcs, upper))
-    sensitivities = [all_metrics[i][2] for i in range(len(all_metrics))]
-    sensitivities = (np.mean(sensitivities), np.percentile(sensitivities, lower), np.percentile(sensitivities, upper))
-    specificities = [all_metrics[i][3] for i in range(len(all_metrics))]
-    specificities = (np.mean(specificities), np.percentile(specificities, lower), np.percentile(specificities, upper))
-    precisions = [all_metrics[i][4] for i in range(len(all_metrics))]
-    precisions = (np.mean(precisions), np.percentile(precisions, lower), np.percentile(precisions, upper))
-    balanced_accuracies = [all_metrics[i][5] for i in range(len(all_metrics))]
-    balanced_accuracies = (np.mean(balanced_accuracies), np.percentile(balanced_accuracies, lower),
-                           np.percentile(balanced_accuracies, upper))
-    positivity_rates = [all_metrics[i][6] for i in range(len(all_metrics))]
-    positivity_rates = (np.mean(positivity_rates), np.percentile(positivity_rates, lower),
-                        np.percentile(positivity_rates, upper))
-    if model == 'logreg':
-        coefs = [all_metrics[i][7] for i in range(len(all_metrics))]
-    else:
-        coefs = None
-    results = {'auroc': aurocs, 
-               'aurocs_all': aurocs_all, 
-               'auprc': auprcs, 
-               'tpr': sensitivities, 
-               'tnr': specificities, 
-               'precision': precisions, 
-               'bacc': balanced_accuracies, 
-               'pr': positivity_rates,
-               'coefs': coefs}
-    np.save(f'results/results_{population}_{outcome}_{model}_{method}_{file_ending2}.npy', results)
-    
-    return aurocs, aurocs_all, auprcs, sensitivities, specificities, precisions, balanced_accuracies, positivity_rates  
-
-def unpack_metrics_mean(all_metrics: list):
-
-    auroc = np.mean([all_metrics[i][0] for i in range(len(all_metrics))])
-    auprc = np.mean([all_metrics[i][1] for i in range(len(all_metrics))])
-    sensitivity = np.mean([all_metrics[i][2] for i in range(len(all_metrics))])
-    specificity = np.mean([all_metrics[i][3] for i in range(len(all_metrics))])
-    precision = np.mean([all_metrics[i][4] for i in range(len(all_metrics))])
-    balanced_accuracy = np.mean([all_metrics[i][5] for i in range(len(all_metrics))])
-    positivity_rate = np.mean([all_metrics[i][6] for i in range(len(all_metrics))])
-    coefs = [all_metrics[i][7] for i in range(len(all_metrics))]
-    
-    return auroc, auprc, sensitivity, specificity, precision, balanced_accuracy, positivity_rate, coefs
-
 class StandardScaler1:
     
     def __init__(self, copy=True):
@@ -180,6 +98,7 @@ def prediction(data_final,
                imputation_method=None,
                store=True):
     """
+    Run prediction.
     """      
     # Specify data
     if not multitask:
