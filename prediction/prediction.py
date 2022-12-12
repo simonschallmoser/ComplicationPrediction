@@ -93,12 +93,12 @@ def prediction(data_final,
                scale=False,
                n_iter=20,
                n_outer_splits=5,
-               n_inner_splits=4, 
+               n_inner_splits=4,
+               n_bootstrapping_iterations=0,
                multitask=False,
                imputation_method=None,
                store=True):
     """
-    Run prediction.
     """      
     # Specify data
     if not multitask:
@@ -166,7 +166,12 @@ def prediction(data_final,
     
     # Model prediction using stratified cross-validation
     y_pred_all = []
+    y_pred_calibrated_all = []
     y_test_all = []
+    y_calibration_pred_all = []
+    y_calibration_test_all = []
+    y_calibration_pred_calibrated_all = []
+    sex_all = []
     if multitask == 'real_multitask':
         skf_outer = KFold(n_splits=n_outer_splits, shuffle=True, random_state=random_seed)
     else: 
@@ -227,10 +232,13 @@ def prediction(data_final,
                         if scale:
                             pipe = Pipeline([
                                     ('scaler', StandardScaler()),
-                                    ('model', initialize_model(model, multitask).set_params(random_state=random_seed, **params))
+                                    ('model', initialize_model(model,
+                                                               multitask).set_params(random_state=random_seed,
+                                                                                     **params))
                                     ]) 
                         else:
-                            pipe = initialize_model(model, multitask).set_params(random_state=random_seed, **params)
+                            pipe = initialize_model(model, multitask).set_params(random_state=random_seed,
+                                                                                 **params)
 
                         pipe.fit(X_train1, y_train1)
                     if multitask == 'real_multitask' or multitask == 'multitask':
@@ -269,13 +277,21 @@ def prediction(data_final,
                     pipe = Pipeline([
                             ('scaler', StandardScaler()),
                             ('model', initialize_model(model, multitask).set_params(random_state=random_seed, **best_params))
-                            ]) 
+                            ])
+                    pipe_cal = Pipeline([
+                                ('scaler', StandardScaler()),
+                                ('model', initialize_model(model, multitask).set_params(random_state=random_seed, **best_params))
+                                ]) 
                 else:
                     pipe = initialize_model(model, multitask).set_params(random_state=random_seed, **best_params)
+                    pipe_cal = initialize_model(model, multitask).set_params(random_state=random_seed, **best_params)
                     
                 if imputation_method is not None:
                     X_train, X_test = data_imputation.impute_data(X_train, X_test, imputation_method)
                 pipe.fit(X_train, y_train)
+                if model == 'catboost' and multitask == False:
+                    calibration = CalibratedClassifierCV(pipe_cal, cv=4)
+                    calibration.fit(X_train, y_train)
 
         else:
             if imputation_method is not None:
@@ -291,13 +307,49 @@ def prediction(data_final,
                         ]) 
             pipe.fit(X_train, y_train)
         
-        if multitask == 'multitask' or multitask  == 'real_multitask':
-            y_pred_all.append(pipe.predict_proba(X_test))
+        if n_bootstrapping_iterations > 0:
+            for random_state in range(n_bootstrapping_iterations):
+                ids_negative = list(y_test[y_test == 0].index.get_level_values('id'))
+                ids_positive = list(y_test[y_test == 1].index.get_level_values('id'))
+                X_test_negative = X_test.loc[ids_negative]
+                X_test_positive = X_test.loc[ids_positive]
+                y_test_negative = y_test.loc[ids_negative]
+                y_test_positive = y_test.loc[ids_positive]
+                X_test_negative_boot = X_test_negative.sample(len(X_test_negative), 
+                                                              replace=True, random_state=random_state)
+                X_test_positive_boot = X_test_positive.sample(len(X_test_positive), 
+                                                              replace=True, random_state=random_state)
+                y_test_negative_boot = y_test_negative.sample(len(y_test_negative), 
+                                                              replace=True, random_state=random_state)
+                y_test_positive_boot = y_test_positive.sample(len(y_test_positive), 
+                                                              replace=True, random_state=random_state)
+                X_test_boot = pd.concat([X_test_positive_boot, X_test_negative_boot])
+                y_test_boot = pd.concat([y_test_positive_boot, y_test_negative_boot])
+                if multitask == 'multitask' or multitask  == 'real_multitask':
+                    y_pred_boot = pipe.predict_proba(X_test_boot)
+                else:
+                    y_pred_boot = pipe.predict_proba(X_test_boot)[:, 1]
+                    if model == 'catboost' and multitask == False:
+                        y_pred_calibrated_boot = calibration.predict_proba(X_test_boot)[:, 1]
+                y_pred_all.append(y_pred_boot)
+                y_test_all.append(np.array(y_test_boot))
+                sex_all.append(np.array(X_test_boot['sex']))
+                if model == 'catboost' and multitask == False:
+                    y_pred_calibrated_all.append(y_pred_calibrated_boot)
         else:
-            y_pred_all.append(pipe.predict_proba(X_test)[:, 1])
-        y_test_all.append(np.array(y_test))
+            if multitask == 'multitask' or multitask  == 'real_multitask':
+                y_pred_all.append(pipe.predict_proba(X_test))
+            else:
+                y_pred_all.append(pipe.predict_proba(X_test)[:, 1])
+                if model == 'catboost' and multitask == False:
+                    y_pred_calibrated_all.append(calibration.predict_proba(X_test)[:, 1])
+            y_test_all.append(np.array(y_test))
+            sex_all.append(np.array(X_test['sex']))
     
-    results = {'y_test': y_test_all, 'y_pred': y_pred_all}
+    if model == 'catboost' and multitask == False:
+        results = {'y_test': y_test_all, 'y_pred': y_pred_all, 'y_pred_calibrated': y_pred_calibrated_all, 'sex': sex_all}
+    else:
+        results = {'y_test': y_test_all, 'y_pred': y_pred_all, 'sex': sex_all}
     if store:
         np.save(f'results/results_{population}_{outcome}_{model}_{random_seed}_{file_ending1}.npy', results)    
             

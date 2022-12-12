@@ -7,15 +7,11 @@ from docx.shared import Cm
 from plot_functions import get_results
 
 
-def results_table(random_seeds,
-                  method, 
+def results_table(random_seed,
                   file_ending,
-                  directory):
+                  directory,
+                  return_aurocs=True):
     
-    if method == 'minmax':
-        return_aurocs = True
-    else:
-        return_aurocs = False
     populations = ['prediabetes', 'diabetes']
     populations_text = ['Prediabetes', 'Diabetes']
     models = ['logreg', 'catboost']
@@ -45,19 +41,16 @@ def results_table(random_seeds,
                 row.cells[1].text = population_text
                 row.cells[2].text = model_text
                 for idx2, outcome in enumerate(outcomes):
-                    mean, min_, max_, _ = get_results(population, 
-                                                      outcome, 
-                                                      model, 
-                                                      file_ending,
-                                                      random_seeds,
-                                                      method=method,
-                                                      metric=metric,
-                                                      directory=directory,
-                                                      return_aurocs=return_aurocs)
+                    mean, std = get_results(population, 
+                                            outcome, 
+                                            model, 
+                                            file_ending,
+                                            random_seed,
+                                            metric=metric,
+                                            directory=directory)
                     mean = np.round(mean, 3)
-                    min_ = np.round(min_, 3)
-                    max_ = np.round(max_, 3)
-                    row.cells[idx2+3].text = "%0.3f" % mean + ' (' + "%0.3f" % min_ + ', ' + "%0.3f" % max_ + ')'
+                    std = np.round(std, 3)
+                    row.cells[idx2+3].text = "%0.3f" % mean + ' (' + "%0.3f" % std + ')'
     document.save('results.docx')
 
     return 0

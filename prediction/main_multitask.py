@@ -25,7 +25,7 @@ outcomes = ['eyes', 'renal', 'nerves', 'pvd', 'cavd', 'cevd']
 model = 'catboost'
 file_ending = 'basic'
 type_ = 'all'
-random_seeds = [23, 8902, 2982, 5793, 1039, 3947, 1380, 5893, 3981, 8502]
+random_seed = 23
 
 for population in ['diabetes', 'prediabetes']:
     data = np.load(f'/local/home/sschallmoser/complications/data/data_{population}_{file_ending}1.npy', allow_pickle=True).flatten()[0]
@@ -48,23 +48,22 @@ for population in ['diabetes', 'prediabetes']:
     
     for outcomes_, file_ending1, multitask in zip([outcomes, outcomes, ['any']], ['healthy', 'multitask', 'real_multitask'], [False, 'multitask', 'real_multitask']):
         print(outcomes_, file_ending1, multitask)
-        for outcome in outcomes_:
-            if file_ending1 == 'healthy':
-                data_ = data_healthy.copy()
-            else:
-                data_ = data_all.copy()
-            Parallel(n_jobs=len(random_seeds))(delayed(prediction.prediction)(data_final=data_,
-                                                                              random_seed=seed,
-                                                                              model=model,
-                                                                              population=population,
-                                                                              outcome=outcome,
-                                                                              type_=type_,
-                                                                              file_ending1=file_ending1,
-                                                                              predictors=None, 
-                                                                              scale=False,
-                                                                              n_iter=20,
-                                                                              n_outer_splits=5,
-                                                                              n_inner_splits=4, 
-                                                                              multitask=multitask,
-                                                                              imputation_method=None)
-                for seed in random_seeds)
+        if file_ending1 == 'healthy':
+            data_ = data_healthy.copy()
+        else:
+            data_ = data_all.copy()
+        Parallel(n_jobs=len(outcomes_))(delayed(prediction.prediction)(data_final=data_,
+                                                                       random_seed=random_seed,
+                                                                       model=model,
+                                                                       population=population,
+                                                                       outcome=outcome,
+                                                                       type_=type_,
+                                                                       file_ending1=file_ending1,
+                                                                       predictors=None, 
+                                                                       scale=False,
+                                                                       n_iter=20,
+                                                                       n_outer_splits=5,
+                                                                       n_inner_splits=4, 
+                                                                       multitask=multitask,
+                                                                       imputation_method=None)
+                for outcome in outcomes_)

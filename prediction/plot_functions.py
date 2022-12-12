@@ -16,106 +16,84 @@ def get_results(population,
                 outcome, 
                 model, 
                 file_ending,
-                random_seeds, 
-                method, 
+                random_seed, 
                 metric='auroc',
                 directory='results', 
-                multitask=False, 
-                return_aurocs=False):
+                multitask=False,
+                return_risk_groups=False):
     
     outcomes = np.array(['eyes', 'renal', 'nerves', 'pvd', 'cevd', 'cavd'])
     multitask_idx = np.argmax(outcomes == outcome)
     if multitask == 'real_multitask':
         outcome = 'any'
     scores = []
-    scores_all = []
-    for random_seed in random_seeds:
-        scores1 = []
-        results = np.load(f'../prediction/{directory}/results_{population}_{outcome}_{model}_{random_seed}_{file_ending}.npy', 
-                          allow_pickle=True).flatten()[0]
-        for i in range(5):
-            if multitask == 'multitask':
-                score = roc_auc_score(results['y_test'][i][:, 0], results['y_pred'][i][:, 0])
-            elif multitask == 'real_multitask':
-                if len(np.unique(results['y_test'][i][:, multitask_idx])) == 1:
-                    print('No outcomes for seed', random_seed, ' and outcome', outcomes[multitask_idx])
-                else:
-                    score = roc_auc_score(results['y_test'][i][:, multitask_idx], results['y_pred'][i][:, multitask_idx])
+    scores_male = []
+    scores_female = []
+    results = np.load(f'../prediction/{directory}/results_{population}_{outcome}_{model}_{random_seed}_{file_ending}.npy', 
+                      allow_pickle=True).flatten()[0]
+    y_pred = 'y_pred_calibrated' if model == 'catboost' and (multitask == False 
+                                                             and file_ending != 'healthy') else 'y_pred'
+    for i in range(5):
+        if multitask == 'multitask':
+            if len(np.unique(results['y_test'][i][:, 0])) == 1:
+                pass
             else:
-                if metric == 'auroc':
-                    score = roc_auc_score(results['y_test'][i], results['y_pred'][i])
-                elif metric == 'auprc':
-                    precision, recall, thresholds = precision_recall_curve(results['y_test'][i], results['y_pred'][i])
-                    score = auc(recall, precision)
-                elif metric == 'sensitivity':
-                    fpr, tpr, thresholds = roc_curve(results['y_test'][i], results['y_pred'][i])
-                    score = tpr[np.argmax(tpr-fpr)]
-                elif metric == 'specificity':
-                    fpr, tpr, thresholds = roc_curve(results['y_test'][i], results['y_pred'][i])
-                    score = 1 - fpr[np.argmax(tpr-fpr)]
-                elif metric == 'bacc':
-                    fpr, tpr, thresholds = roc_curve(results['y_test'][i], results['y_pred'][i])
-                    threshold_optimal = thresholds[np.argmax(tpr-fpr)]
-                    y_pred_rounded = [1 if i > threshold_optimal else 0 for i in results['y_pred'][i]]
-                    score = balanced_accuracy_score(results['y_test'][i], y_pred_rounded)
-            scores1.append(score)
-            scores_all.append(score)
-        if method == 'minmax':
-            scores.append(np.mean(scores1, axis=0))
-    
-    mean = np.mean(scores_all, axis=0)
-    std = np.std(scores_all, axis=0)
-    if method == 'minmax':
-        min_ = np.min(scores, axis=0)
-        max_ = np.max(scores, axis=0)
-    if return_aurocs:
-        return mean, min_, max_, scores_all
+                score = roc_auc_score(results['y_test'][i][:, 0], results[y_pred][i][:, 0])
+        elif multitask == 'real_multitask':
+            if len(np.unique(results['y_test'][i][:, multitask_idx])) == 1:
+                pass
+            else:
+                score = roc_auc_score(results['y_test'][i][:, multitask_idx], results[y_pred][i][:, multitask_idx])
+        else:
+            if metric == 'auroc':
+                score = roc_auc_score(results['y_test'][i], results[y_pred][i])
+                if return_risk_groups:
+                    male = np.where(results['sex'][i] == 0)
+                    female = np.where(results['sex'][i] == 1)
+                    score_male = roc_auc_score(results['y_test'][i][male], results[y_pred][i][male])
+                    scores_male.append(score_male)
+                    score_female = roc_auc_score(results['y_test'][i][female], results[y_pred][i][female])
+                    scores_female.append(score_female)
+            elif metric == 'auprc':
+                precision, recall, thresholds = precision_recall_curve(results['y_test'][i], results[y_pred][i])
+                score = auc(recall, precision)
+            elif metric == 'sensitivity':
+                fpr, tpr, thresholds = roc_curve(results['y_test'][i], results[y_pred][i])
+                score = tpr[np.argmax(tpr-fpr)]
+            elif metric == 'specificity':
+                fpr, tpr, thresholds = roc_curve(results['y_test'][i], results[y_pred][i])
+                score = 1 - fpr[np.argmax(tpr-fpr)]
+            elif metric == 'bacc':
+                fpr, tpr, thresholds = roc_curve(results['y_test'][i], results[y_pred][i])
+                threshold_optimal = thresholds[np.argmax(tpr-fpr)]
+                y_pred_rounded = [1 if i > threshold_optimal else 0 for i in results[y_pred][i]]
+                score = balanced_accuracy_score(results['y_test'][i], y_pred_rounded)
+        scores.append(score)
+
+    mean = np.mean(scores)
+    std = np.std(scores)
+    if return_risk_groups:
+        mean_male = np.mean(scores_male)
+        mean_female = np.mean(scores_female)
+        std_male = np.std(scores_male)
+        std_female = np.std(scores_female)
+        return mean_male, mean_female, std_male, std_female
     
     return mean, std
 
-def mann_whitney_u_test(aurocs_1, aurocs_2):
-    
-    from scipy.stats import mannwhitneyu
-    
-    p_value = mannwhitneyu(aurocs_1, aurocs_2).pvalue
-    
-    if p_value >= 0.05:
-        stars = 'ns'
-        p_value = '=' + str(np.round(p_value, 2))[1:]
-    elif 0.01 < p_value < 0.05:
-        stars = '*'
-        p_value_ = '=' + str(np.round(p_value, 2))[1:]
-        if p_value_ == '=.05':
-            p_value = '=' + str(np.round(p_value, 3))[1:]
-        else:
-            p_value = p_value_
-    elif 0.001 < p_value < 0.01:
-        stars = '**'
-        p_value_ = '=' + str(np.round(p_value, 3))[1:]
-        if p_value_ == '=.01':
-            p_value = '=' + str(np.round(p_value, 4))[1:]
-        else:
-            p_value = p_value_
-    elif p_value < 0.001:
-        stars = '***'
-        p_value = '<.001'
-        
-    return stars, p_value
-
-def plot_results(random_seeds,
+def plot_results(random_seed,
                  outcomes, 
                  outcomes_long,
                  file_ending,
-                 method='minmax',
+                 directory='results',
                  figsize=(14, 8),
                  capsize=4,
                  store=False,
-                 y_lim_up=0.84,
-                 y_lim_low=0.46):
+                 y_lim_up=0.95,
+                 y_lim_low=-0.05):
     
     # Change font type to Arial
     plt.figure(figsize=figsize, facecolor='white')
-    
     for population, population_title in zip(['prediabetes', 'diabetes'], ['Prediabetes', 'Diabetes']):
         
         if population == 'prediabetes':
@@ -124,7 +102,7 @@ def plot_results(random_seeds,
         else:
             plt.subplot(2, 1, 2)
             text = 'B'
-        for model, model_text in zip(['logreg', 'catboost'], ['Logistic regression', 'GBDT']):
+        for model, model_text in zip(['logreg', 'catboost'], ['Logistic regression', 'GBDTs']):
             if model == 'logreg':
                 offset = -0.1
                 marker = 'o'
@@ -138,63 +116,34 @@ def plot_results(random_seeds,
                     label = model_text
                 else:
                     label = None
-                mean_, min_, max_, aurocs_ = get_results(population=population, 
-                                                         outcome=outcome,
-                                                         model=model, 
-                                                         file_ending=file_ending, 
-                                                         random_seeds=random_seeds,
-                                                         method=method, 
-                                                         multitask=False,
-                                                         return_aurocs=True)
+                mean, std = get_results(population=population, 
+                                        outcome=outcome,
+                                        model=model, 
+                                        file_ending=file_ending, 
+                                        random_seed=random_seed,
+                                        directory=directory,
+                                        multitask=False)
                 
-                mean_logreg, min_logreg, max_logreg, aurocs_logreg = get_results(population=population, 
-                                                                                 outcome=outcome,
-                                                                                 model='logreg', 
-                                                                                 file_ending=file_ending, 
-                                                                                 random_seeds=random_seeds,
-                                                                                 method=method, 
-                                                                                 multitask=False,
-                                                                                 return_aurocs=True)
-
-                plt.errorbar(idx+1+offset, mean_, yerr=[[mean_-min_], 
-                                                            [max_-mean_]],
+                plt.errorbar(idx+1+offset, mean, yerr=std,
                              marker=marker,
                              color=color, capsize=capsize, label=label)
                 if model == 'catboost':
-                    if mean_ > mean_logreg:
-                        result_upper = mean_
-                        result_lower = mean_logreg
-                    else:
-                        result_upper = mean_logreg
-                        result_lower = mean_
-                    plt.vlines(idx+1+2.7*offset, result_lower, result_upper, color='black')
-                    plt.hlines(result_lower, idx+1+2.2*offset, idx+1+2.7*offset+0.007, color='black')
-                    plt.hlines(result_upper, idx+1+2.2*offset, idx+1+2.7*offset+0.007, color='black')
-                    star, p_value = mann_whitney_u_test(aurocs_logreg, aurocs_)
-                    if star == 'ns':
-                        y_offset = -0.008
-                        y_offset1 = 0.024
-                        fontsize_star = 14
-                    else:
-                        y_offset = 0.008
-                        y_offset1 = 0.024
-                        fontsize_star = 18
-                    plt.text(idx+1+3*offset, (result_lower+result_upper)/2-y_offset,
-                             star, fontsize=fontsize_star, fontproperties=font)
-                    plt.text(idx+1+3*offset, (result_lower+result_upper)/2-y_offset1,
-                             '$\it{P}$'+p_value, fontsize=12, fontproperties=font)
+                    x_value = idx+1.15
+                elif model == 'logreg':
+                    x_value = idx+0.6
+                plt.text(x_value, mean-0.0085, "%0.3f" % np.round(mean, 3), fontsize=12, fontproperties=font)
 
-            #plt.ylim(0.48, 0.92)
-            plt.ylim(y_lim_low, y_lim_up)
-            plt.xticks(np.arange(1, 7), outcomes_long, fontsize=16, alpha=1, rotation=0, fontproperties=font)
-            plt.title(population_title, fontsize=18, fontproperties=font)
+            plt.ylim(0.48, 0.88)
             plt.grid(True)
+            #plt.ylim(y_lim_low, y_lim_up)
+            plt.xticks(np.arange(1, 7), outcomes_long, fontsize=16, alpha=1, rotation=0, fontproperties=font)
+            plt.title(population_title, fontsize=18, fontproperties=font)        
             plt.yticks([0.5, 0.6, 0.7, 0.8], alpha=1, fontsize=16, fontproperties=font)
             plt.ylabel('AUROC', fontsize=16, alpha=1, fontproperties=font)
             plt.xlim(0.5, 6.8)
     
-        plt.text(0.02, 0.85, text, fontsize=25, fontproperties=font)
-    plt.legend(bbox_to_anchor=(0.411, -0.2), fontsize=16, framealpha=1, edgecolor='black', fancybox=False,
+        plt.text(0.02, 0.895, text, fontsize=25, fontproperties=font)
+    plt.legend(bbox_to_anchor=(0.4211, -0.2), fontsize=16, framealpha=1, edgecolor='black', fancybox=False,
                prop=font1, ncol=2)
     plt.subplots_adjust(hspace=0.4)
     
@@ -203,6 +152,7 @@ def plot_results(random_seeds,
         plt.savefig('plots/results.pdf', dpi=600, bbox_inches='tight')
         
     return 0
+
 
 def rename_data(X):
     X_renamed = X.rename({'test=creatinineserum': 'SCr',

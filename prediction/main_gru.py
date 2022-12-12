@@ -22,21 +22,20 @@ import prediction
 outcomes = ['eyes', 'nerves', 'renal', 'pvd', 'cevd', 'cavd']
 
 # Define variables
-population = 'diabetes'
 model = 'gru'
 file_ending = 'lstm'
 file_ending1 = 'basic'
 type_ = 'all'
 multitask = False
-random_seeds = [23, 8902, 2982, 5793, 1039, 3947, 1380, 5893, 3981, 8502]
+random_seed = 23
 predictors = ['age', 'sex', 'bmi', 'systolic_bp', 'diastolic_bp', 'test=glucose','test=hba1c(%)',
               'test=creatinineserum']
-data = np.load(f'/local/home/sschallmoser/complications/data/data_{population}_{file_ending}.npy', allow_pickle=True).flatten()[0]
 
-for outcome in outcomes:
-    for seed in random_seeds:
+for population in ['diabetes', 'prediabetes']:
+    data = np.load(f'/local/home/sschallmoser/complications/data/data_{population}_{file_ending}.npy', allow_pickle=True).flatten()[0]
+    for outcome in outcomes:
         prediction.prediction(data_final=data,
-                              random_seed=seed,
+                              random_seed=random_seed,
                               model=model,
                               population=population,
                               outcome=outcome,
